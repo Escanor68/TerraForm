@@ -1,0 +1,114 @@
+version: 0.2
+
+# Variables de entorno disponibles automáticamente:
+# - ENVIRONMENT: dev, preprod o prod
+# - AWS_DEFAULT_REGION: región de AWS
+# - VPC_ID: ID de la VPC
+# - PROJECT_NAME: nombre del proyecto
+# - MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD (desde variables)
+# - NODE_ENV, LOG_LEVEL, etc. (según lo configurado en terraform.tfvars)
+
+phases:
+  pre_build:
+    commands:
+      - echo "=========================================="
+      - echo "Iniciando build para el entorno: $ENVIRONMENT"
+      - echo "Proyecto: $PROJECT_NAME"
+      - echo "Región: $AWS_DEFAULT_REGION"
+      - echo "Node.js Version: $(node --version)"
+      - echo "NPM Version: $(npm --version)"
+      - echo "=========================================="
+      
+      # Verificar variables de entorno MySQL (sin mostrar valores sensibles)
+      - echo "Configuración MySQL:"
+      - echo "  Host: $MYSQL_HOST"
+      - echo "  Port: $MYSQL_PORT"
+      - echo "  Database: $MYSQL_DATABASE"
+      - echo "  User: $MYSQL_USER"
+      - echo "  Pool Size: $MYSQL_POOL_SIZE"
+      - |
+        if [ -n "$MYSQL_PASSWORD" ]; then
+          echo "  Password: [CONFIGURADA]"
+        else
+          echo "  Password: [NO CONFIGURADA]"
+        fi
+      
+      - echo "Instalando dependencias de Node.js..."
+      - npm ci  # Usa npm ci para instalaciones más rápidas y confiables en CI/CD
+      # Alternativa si no tienes package-lock.json:
+      # - npm install
+
+  build:
+    commands:
+      - echo "Construyendo aplicación Node.js..."
+      
+      # Construir URL de conexión MySQL (opcional, si tu app la necesita como string)
+      - export MYSQL_URL="mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DATABASE}"
+      - echo "URL de MySQL construida (no se muestra por seguridad)"
+      
+      # Ejecutar tests (recomendado antes del build)
+      - echo "Ejecutando tests..."
+      - npm test
+      
+      # Compilar/build de la aplicación
+      - echo "Compilando aplicación..."
+      - npm run build
+      
+      # Ejemplo para TypeScript:
+      # - npm run build:ts
+      
+      # Ejemplo para proyectos con múltiples comandos:
+      # - npm run build:client
+      # - npm run build:server
+      
+      # Verificar que el build fue exitoso
+      - |
+        if [ -d "dist" ] || [ -d "build" ] || [ -f "package.json" ]; then
+          echo "Build completado exitosamente"
+        else
+          echo "ERROR: No se encontraron archivos de build"
+          exit 1
+        fi
+
+  post_build:
+    commands:
+      - echo "=========================================="
+      - echo "Build completado exitosamente"
+      - echo "Entorno: $ENVIRONMENT"
+      - echo "NODE_ENV: $NODE_ENV"
+      - echo "=========================================="
+      
+      # Listar archivos generados (opcional, para debugging)
+      - echo "Archivos en el directorio de build:"
+      - ls -la dist/ 2>/dev/null || ls -la build/ 2>/dev/null || echo "No hay directorio de build"
+      
+      # Verificar variables de entorno críticas
+      - |
+        echo "Verificación de variables de entorno:"
+        [ -z "$MYSQL_HOST" ] && echo "  ⚠️  MYSQL_HOST no configurada" || echo "  ✅ MYSQL_HOST configurada"
+        [ -z "$MYSQL_DATABASE" ] && echo "  ⚠️  MYSQL_DATABASE no configurada" || echo "  ✅ MYSQL_DATABASE configurada"
+        [ -z "$MYSQL_PASSWORD" ] && echo "  ⚠️  MYSQL_PASSWORD no configurada" || echo "  ✅ MYSQL_PASSWORD configurada"
+
+# Artifacts que se generarán para el pipeline
+artifacts:
+  files:
+    - '**/*'
+  name: nodejs-build-$ENVIRONMENT-$(date +%Y-%m-%d-%H-%M-%S)
+  # Opcional: excluir archivos innecesarios
+  # discard-paths: no
+  # base-directory: dist  # Si tu build genera archivos en dist/
+
+# Opcional: Configuración de cache para acelerar builds
+cache:
+  paths:
+    - 'node_modules/**/*'
+    - '.npm/**/*'
+
+# Opcional: Notificaciones
+# notifications:
+#   - notifications:
+#       - type: SNS
+#         destinationArn: arn:aws:sns:us-east-1:123456789012:build-notifications
+#         events:
+#           - BUILD_FAILED
+#           - BUILD_SUCCEEDED

@@ -1,0 +1,118 @@
+# Copia este archivo a terraform.tfvars y ajusta los valores según tus necesidades
+
+aws_region = "us-east-1"
+
+project_name = "mi-proyecto"
+environment  = "dev"
+
+# Configuración de VPC
+vpc_cidr = "10.0.0.0/16"
+
+availability_zones = [
+  "us-east-1a",
+  "us-east-1b"
+]
+
+public_subnet_cidrs = [
+  "10.0.1.0/24",
+  "10.0.2.0/24"
+]
+
+private_subnet_cidrs = [
+  "10.0.11.0/24",
+  "10.0.12.0/24"
+]
+
+# Configuración de CodeCommit
+codecommit_repo_name = "mi-repositorio"
+
+# Configuración de CI/CD
+enable_pipelines         = true
+artifacts_retention_days = 30
+
+# Configuración de EC2
+instance_type = "t3.micro"
+key_name      = "mi-clave-ssh"  # Opcional: nombre de tu clave SSH existente
+
+# Configuración de Auto Scaling
+min_size         = 2
+max_size         = 4
+desired_capacity = 2
+
+# CIDR blocks permitidos para acceso HTTP/HTTPS
+allowed_cidr_blocks = [
+  "0.0.0.0/0"  # Cambiar a tu IP o rango específico para mayor seguridad
+]
+
+# Variables de entorno NO SENSIBLES para CodeBuild (Node.js)
+# Estas variables se almacenan directamente en el proyecto CodeBuild
+codebuild_environment_variables = {
+  dev = {
+    # Variables de Node.js
+    "NODE_ENV"                = "development"
+    "LOG_LEVEL"               = "debug"
+    
+    # Variables para MySQL (valores no sensibles)
+    "MYSQL_HOST"              = "dev-mysql-db.xxxxx.us-east-1.rds.amazonaws.com"
+    "MYSQL_PORT"               = "3306"
+    "MYSQL_DATABASE"           = "dev_database"
+    "MYSQL_USER"               = "devuser"
+    "MYSQL_POOL_SIZE"          = "10"
+    "MYSQL_CONNECTION_TIMEOUT" = "5000"
+    
+    # Otras variables de Node.js
+    # "PORT"                    = "3000"
+    # "API_TIMEOUT"             = "5000"
+    # "SESSION_SECRET"           = "dev-session-secret"  # ⚠️ Mejor usar Parameter Store
+    # "FEATURE_FLAG_X"          = "enabled"
+    # "CORS_ORIGIN"             = "http://localhost:3000"
+  }
+  preprod = {
+    "NODE_ENV"                = "staging"
+    "LOG_LEVEL"               = "info"
+    
+    "MYSQL_HOST"              = "preprod-mysql-db.xxxxx.us-east-1.rds.amazonaws.com"
+    "MYSQL_PORT"               = "3306"
+    "MYSQL_DATABASE"           = "preprod_database"
+    "MYSQL_USER"               = "preproduser"
+    "MYSQL_POOL_SIZE"          = "20"
+    "MYSQL_CONNECTION_TIMEOUT" = "3000"
+    
+    # "PORT"                    = "3000"
+    # "API_TIMEOUT"             = "3000"
+    # "CORS_ORIGIN"             = "https://staging.tudominio.com"
+  }
+  prod = {
+    "NODE_ENV"                = "production"
+    "LOG_LEVEL"               = "error"
+    
+    "MYSQL_HOST"              = "prod-mysql-db.xxxxx.us-east-1.rds.amazonaws.com"
+    "MYSQL_PORT"               = "3306"
+    "MYSQL_DATABASE"           = "prod_database"
+    "MYSQL_USER"               = "produser"
+    "MYSQL_POOL_SIZE"          = "50"
+    "MYSQL_CONNECTION_TIMEOUT" = "2000"
+    
+    # "PORT"                    = "8080"
+    # "API_TIMEOUT"             = "2000"
+    # "CORS_ORIGIN"             = "https://tudominio.com"
+  }
+}
+
+# Configuración de almacenamiento seguro de variables
+use_parameter_store = true   # Usar Parameter Store para variables sensibles
+use_secrets_manager  = false  # Usar Secrets Manager para secretos complejos (opcional)
+
+# Configuración de comunicación entre servicios
+# CORS - Orígenes permitidos para API Gateway (frontend)
+cors_origins = [
+  "http://localhost:3000",      # Desarrollo local
+  "https://dev.tudominio.com",   # Dev
+  "https://staging.tudominio.com", # Preprod
+  "https://tudominio.com"        # Prod
+]
+
+# Encriptación para SNS y SQS
+enable_sns_encryption = true
+enable_sqs_encryption = true
+
