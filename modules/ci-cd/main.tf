@@ -66,7 +66,11 @@ resource "aws_iam_role_policy" "codebuild_logs" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "${aws_cloudwatch_log_group.codebuild["dev"].arn}:*"
+        Resource = [
+          "${aws_cloudwatch_log_group.codebuild["dev"].arn}:*",
+          "${aws_cloudwatch_log_group.codebuild["preprod"].arn}:*",
+          "${aws_cloudwatch_log_group.codebuild["prod"].arn}:*"
+        ]
       }
     ]
   })

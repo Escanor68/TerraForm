@@ -46,12 +46,6 @@ variable "codecommit_repo_name" {
   default     = "mi-repositorio"
 }
 
-variable "codebuild_project_name" {
-  description = "Nombre del proyecto CodeBuild"
-  type        = string
-  default     = "mi-codebuild"
-}
-
 variable "instance_type" {
   description = "Tipo de instancia EC2"
   type        = string

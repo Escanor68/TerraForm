@@ -1,5 +1,7 @@
 # Estructura del Proyecto Terraform
 
+> **⚠️ NOTA**: Este documento es de referencia. Para la estructura actualizada, ver el README principal en la raíz del proyecto.
+
 Este proyecto está organizado en módulos para facilitar el mantenimiento y la escalabilidad.
 
 ## Estructura de Carpetas
