@@ -8,6 +8,38 @@ resource "aws_codecommit_repository" "main" {
   }
 }
 
+# Approval Rule Template para requerir 3 aprobaciones en PRs a producción
+resource "aws_codecommit_approval_rule_template" "prod_approvals" {
+  count = var.require_prod_pr_approvals ? 1 : 0
+
+  name        = "${var.project_name}-prod-3-approvals"
+  description = "Requiere 3 aprobaciones para PRs dirigidas a producción"
+
+  content = jsonencode({
+    Version = "2018-11-08"
+    DestinationReferences = ["refs/heads/prod"]
+    Statements = [
+      merge(
+        {
+          Type                   = "Approvers"
+          NumberOfApprovalsNeeded = 3
+        },
+        var.prod_approvers_arn != null && length(var.prod_approvers_arn) > 0 ? {
+          ApprovalPoolMembers = var.prod_approvers_arn
+        } : {}
+      )
+    ]
+  })
+}
+
+# Asociar Approval Rule Template al repositorio
+resource "aws_codecommit_approval_rule_template_association" "prod_branch" {
+  count = var.require_prod_pr_approvals ? 1 : 0
+
+  approval_rule_template_name = aws_codecommit_approval_rule_template.prod_approvals[0].name
+  repository_name             = aws_codecommit_repository.main.repository_name
+}
+
 # IAM Role para CodeBuild
 resource "aws_iam_role" "codebuild" {
   name = "${var.project_name}-codebuild-role"
@@ -694,6 +726,75 @@ resource "aws_codepipeline" "prod" {
         RepositoryName       = aws_codecommit_repository.main.repository_name
         BranchName           = "prod"
         PollForSourceChanges = true
+      }
+    }
+  }
+
+  # Aprobación Manual 1 - Requerida antes del despliegue a producción
+  dynamic "stage" {
+    for_each = var.require_prod_approvals ? [1] : []
+    content {
+      name = "Approval-1"
+
+      action {
+        name     = "ManualApproval-1"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        version  = "1"
+
+        configuration = var.prod_approval_sns_topic_arn != null ? {
+          CustomData = "Primera aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+          NotificationArn = var.prod_approval_sns_topic_arn
+        } : {
+          CustomData = "Primera aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+        }
+      }
+    }
+  }
+
+  # Aprobación Manual 2 - Requerida antes del despliegue a producción
+  dynamic "stage" {
+    for_each = var.require_prod_approvals ? [1] : []
+    content {
+      name = "Approval-2"
+
+      action {
+        name     = "ManualApproval-2"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        version  = "1"
+
+        configuration = var.prod_approval_sns_topic_arn != null ? {
+          CustomData = "Segunda aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+          NotificationArn = var.prod_approval_sns_topic_arn
+        } : {
+          CustomData = "Segunda aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+        }
+      }
+    }
+  }
+
+  # Aprobación Manual 3 - Requerida antes del despliegue a producción
+  dynamic "stage" {
+    for_each = var.require_prod_approvals ? [1] : []
+    content {
+      name = "Approval-3"
+
+      action {
+        name     = "ManualApproval-3"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        version  = "1"
+
+        configuration = var.prod_approval_sns_topic_arn != null ? {
+          CustomData = "Tercera aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+          NotificationArn = var.prod_approval_sns_topic_arn
+        } : {
+          CustomData = "Tercera aprobación requerida para despliegue a producción. Por favor, revisa los cambios antes de aprobar."
+        }
       }
     }
   }

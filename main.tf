@@ -159,4 +159,12 @@ module "ci_cd" {
   parameter_store_dev_vars     = module.storage.parameter_store_dev_names
   parameter_store_preprod_vars = module.storage.parameter_store_preprod_names
   parameter_store_prod_vars   = module.storage.parameter_store_prod_names
+  
+  # Aprobaciones manuales para producción
+  require_prod_approvals      = var.require_prod_approvals
+  prod_approval_sns_topic_arn = var.prod_approval_sns_topic_arn
+  
+  # Aprobaciones de PR para producción
+  require_prod_pr_approvals = var.require_prod_pr_approvals
+  prod_approvers_arn        = var.prod_approvers_arn
 }
