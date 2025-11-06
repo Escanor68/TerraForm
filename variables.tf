@@ -134,3 +134,33 @@ variable "enable_sqs_encryption" {
   default     = true
 }
 
+variable "require_prod_approvals" {
+  description = "Requerir aprobaciones manuales antes del despliegue a producción"
+  type        = bool
+  default     = true
+}
+
+variable "prod_approval_sns_topic_arn" {
+  description = "ARN del SNS Topic para notificaciones de aprobación de producción (opcional)"
+  type        = string
+  default     = null
+}
+
+variable "require_prod_pr_approvals" {
+  description = "Requerir 3 aprobaciones de PR antes de mergear a producción en CodeCommit"
+  type        = bool
+  default     = true
+}
+
+variable "prod_approvers_arn" {
+  description = "Lista de ARNs de usuarios/grupos IAM que pueden aprobar PRs a producción (opcional, si está vacío cualquier usuario puede aprobar)"
+  type        = list(string)
+  default     = null
+}
+
+variable "validate_commit_messages" {
+  description = "Validar que los mensajes de commit sigan el formato Conventional Commits"
+  type        = bool
+  default     = true
+}
+

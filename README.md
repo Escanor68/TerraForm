@@ -198,13 +198,82 @@ El proyecto está configurado para **tres entornos** con pipelines independiente
 
 1. **Push a `dev`** → Trigger automático del pipeline de dev
 2. **Push a `preprod`** → Trigger automático del pipeline de preprod
-3. **Push a `prod`** → Trigger automático del pipeline de prod
+3. **Push a `prod`** → Trigger automático del pipeline de prod (con 3 aprobaciones manuales requeridas)
 
 Cada entorno tiene su propio:
 - Proyecto CodeBuild
 - Pipeline de CodePipeline
 - Stage de API Gateway
 - Variables de entorno (Parameter Store)
+
+### 🔐 Aprobaciones para Producción
+
+El proyecto tiene **dos niveles de aprobación** para garantizar la calidad del código en producción:
+
+#### 1. Aprobaciones de Pull Request (CodeCommit)
+
+Antes de que un PR pueda ser mergeado al branch `prod`, se requieren **3 aprobaciones de desarrolladores**:
+
+- Se configura mediante **Approval Rule Templates** de CodeCommit
+- Solo aplica a PRs dirigidas al branch `prod`
+- Los desarrolladores deben aprobar el PR en CodeCommit antes de poder hacer merge
+- Por defecto, cualquier usuario con permisos puede aprobar (puedes restringir con `prod_approvers_arn`)
+
+**Configuración:**
+- `require_prod_pr_approvals = true` (default) - Habilita las aprobaciones de PR
+- `prod_approvers_arn` (opcional) - Lista de ARNs de usuarios/grupos IAM que pueden aprobar
+
+#### 2. Aprobaciones Manuales en el Pipeline (CodePipeline)
+
+Después de que el código se mergea a `prod`, el pipeline requiere **3 aprobaciones manuales** antes del despliegue:
+
+1. **Source**: El código se obtiene del branch `prod` en CodeCommit
+2. **Approval-1**: Primera aprobación manual requerida
+3. **Approval-2**: Segunda aprobación manual requerida
+4. **Approval-3**: Tercera aprobación manual requerida
+5. **Build**: Una vez aprobadas las 3 etapas, se ejecuta el build
+
+**Cómo aprobar en AWS Console:**
+1. Ve a **CodePipeline** → Selecciona tu pipeline de producción
+2. Cuando el pipeline llegue a una etapa de aprobación, verás un botón **"Review"**
+3. Revisa los cambios y haz clic en **"Approve"** o **"Reject"**
+4. Repite el proceso para las 3 aprobaciones
+
+**Configuración:**
+- `require_prod_approvals = true` (default) - Habilita las aprobaciones del pipeline
+- `prod_approval_sns_topic_arn` (opcional) - ARN del SNS Topic para notificaciones
+
+#### 3. Validación de Mensajes de Commit (Conventional Commits)
+
+El proyecto valida automáticamente que todos los commits en un Pull Request sigan el formato **Conventional Commits**:
+
+**Tipos de commit permitidos:**
+- `feat`: Una nueva característica para el usuario
+- `fix`: Arregla un bug que afecta al usuario
+- `perf`: Cambios que mejoran el rendimiento del sitio
+- `build`: Cambios en el sistema de build, tareas de despliegue o instalación
+- `ci`: Cambios en la integración continua
+- `docs`: Cambios en la documentación
+- `refactor`: Refactorización del código como cambios de nombre de variables o funciones
+- `style`: Cambios de formato, tabulaciones, espacios o puntos y coma, etc; no afectan al usuario
+- `test`: Añade tests o refactoriza uno existente
+
+**Formato requerido:** `<tipo>: <descripción>`
+
+**Ejemplos válidos:**
+- `feat: Agregar nueva funcionalidad de login`
+- `fix: Corregir error en validación de formulario`
+- `docs: Actualizar documentación de API`
+- `refactor: Simplificar lógica de autenticación`
+
+**Cómo funciona:**
+- Cuando se crea o actualiza un Pull Request, una Lambda function valida automáticamente todos los commits
+- Si algún commit no cumple con el formato, se agrega un comentario en el PR indicando los commits inválidos
+- El PR permanece abierto hasta que todos los commits cumplan con el formato
+
+**Configuración:**
+- `validate_commit_messages = true` (default) - Habilita la validación de commits
+- La validación se aplica a todos los branches automáticamente
 
 ### Configurar buildspec.yml
 

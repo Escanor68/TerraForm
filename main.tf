@@ -167,4 +167,7 @@ module "ci_cd" {
   # Aprobaciones de PR para producción
   require_prod_pr_approvals = var.require_prod_pr_approvals
   prod_approvers_arn        = var.prod_approvers_arn
+  
+  # Validación de mensajes de commit
+  validate_commit_messages = var.validate_commit_messages
 }

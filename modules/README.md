@@ -153,7 +153,27 @@ Cada entorno tiene su propio:
 
 1. **Push a `dev`** → Trigger automático del pipeline de dev
 2. **Push a `preprod`** → Trigger automático del pipeline de preprod
-3. **Push a `prod`** → Trigger automático del pipeline de prod
+3. **Push a `prod`** → Trigger automático del pipeline de prod (con 3 aprobaciones manuales requeridas)
+
+### 🔐 Aprobaciones para Producción
+
+El módulo CI/CD implementa **tres niveles de control** para producción:
+
+#### 1. Validación de Mensajes de Commit (Conventional Commits)
+- Valida automáticamente que los commits sigan el formato Conventional Commits
+- Tipos permitidos: feat, fix, perf, build, ci, docs, refactor, style, test
+- Se ejecuta mediante Lambda function cuando se crea/actualiza un PR
+- Variables: `validate_commit_messages`
+
+#### 2. Aprobaciones de PR (CodeCommit)
+- Requiere **3 aprobaciones** antes de mergear PRs al branch `prod`
+- Configurado mediante Approval Rule Templates
+- Variables: `require_prod_pr_approvals`, `prod_approvers_arn`
+
+#### 3. Aprobaciones Manuales en Pipeline (CodePipeline)
+- Requiere **3 aprobaciones manuales** antes del despliegue
+- Flujo: Source → Approval-1 → Approval-2 → Approval-3 → Build
+- Variables: `require_prod_approvals`, `prod_approval_sns_topic_arn`
 
 ### Configurar buildspec.yml
 

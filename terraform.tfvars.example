@@ -30,6 +30,30 @@ codecommit_repo_name = "mi-repositorio"
 enable_pipelines         = true
 artifacts_retention_days = 30
 
+# Aprobaciones manuales para producción (en el pipeline)
+# Requiere 3 aprobaciones manuales antes del despliegue a producción
+require_prod_approvals = true  # Cambiar a false para deshabilitar aprobaciones
+
+# Notificaciones SNS para aprobaciones (opcional)
+# prod_approval_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:prod-approvals"
+
+# Aprobaciones de PR para producción (en CodeCommit)
+# Requiere 3 aprobaciones de PR antes de mergear a producción
+require_prod_pr_approvals = true  # Cambiar a false para deshabilitar aprobaciones de PR
+
+# Lista de ARNs de usuarios/grupos IAM que pueden aprobar PRs a producción (opcional)
+# Si está vacío, cualquier usuario con permisos puede aprobar
+# prod_approvers_arn = [
+#   "arn:aws:iam::123456789012:user/desarrollador1",
+#   "arn:aws:iam::123456789012:user/desarrollador2",
+#   "arn:aws:iam::123456789012:group/desarrolladores"
+# ]
+
+# Validación de mensajes de commit (Conventional Commits)
+# Requiere que los commits sigan el formato: <tipo>: <descripción>
+# Tipos permitidos: feat, fix, perf, build, ci, docs, refactor, style, test
+validate_commit_messages = true  # Cambiar a false para deshabilitar validación
+
 # Configuración de EC2
 instance_type = "t3.micro"
 key_name      = "mi-clave-ssh"  # Opcional: nombre de tu clave SSH existente

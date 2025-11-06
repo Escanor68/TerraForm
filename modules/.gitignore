@@ -29,3 +29,7 @@ Thumbs.db
 *.swo
 *~
 
+# Archivos de Lambda
+*.zip
+commit_validator.zip
+

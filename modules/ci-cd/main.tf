@@ -40,6 +40,395 @@ resource "aws_codecommit_approval_rule_template_association" "prod_branch" {
   repository_name             = aws_codecommit_repository.main.repository_name
 }
 
+# CloudWatch Log Group para Lambda de validación de commits
+resource "aws_cloudwatch_log_group" "commit_validator" {
+  count             = var.validate_commit_messages ? 1 : 0
+  name              = "/aws/lambda/${var.project_name}-commit-validator"
+  retention_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-commit-validator-logs"
+  }
+}
+
+# IAM Role para Lambda de validación de commits
+resource "aws_iam_role" "commit_validator" {
+  count = var.validate_commit_messages ? 1 : 0
+  name  = "${var.project_name}-commit-validator-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-commit-validator-role"
+  }
+}
+
+# IAM Policy para Lambda - Acceso a CodeCommit
+resource "aws_iam_role_policy" "commit_validator_codecommit" {
+  count = var.validate_commit_messages ? 1 : 0
+  name  = "${var.project_name}-commit-validator-codecommit-policy"
+  role  = aws_iam_role.commit_validator[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "codecommit:GetPullRequest",
+          "codecommit:GetCommit",
+          "codecommit:GetDifferences",
+          "codecommit:PostCommentForPullRequest",
+          "codecommit:UpdatePullRequestStatus"
+        ]
+        Resource = aws_codecommit_repository.main.arn
+      }
+    ]
+  })
+}
+
+# IAM Policy para Lambda - CloudWatch Logs
+resource "aws_iam_role_policy" "commit_validator_logs" {
+  count = var.validate_commit_messages ? 1 : 0
+  name  = "${var.project_name}-commit-validator-logs-policy"
+  role  = aws_iam_role.commit_validator[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.commit_validator[0].arn}:*"
+      }
+    ]
+  })
+}
+
+# Lambda function para validar mensajes de commit
+resource "aws_lambda_function" "commit_validator" {
+  count = var.validate_commit_messages ? 1 : 0
+
+  function_name = "${var.project_name}-commit-validator"
+  role          = aws_iam_role.commit_validator[0].arn
+  handler       = "index.handler"
+  runtime       = "python3.11"
+  timeout       = 30
+
+  filename         = data.archive_file.commit_validator_zip[0].output_path
+  source_code_hash = data.archive_file.commit_validator_zip[0].output_base64sha256
+
+  environment {
+    variables = {
+      REPOSITORY_NAME = aws_codecommit_repository.main.repository_name
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy.commit_validator_codecommit,
+    aws_iam_role_policy.commit_validator_logs,
+    aws_cloudwatch_log_group.commit_validator
+  ]
+
+  tags = {
+    Name = "${var.project_name}-commit-validator"
+  }
+}
+
+# Código fuente de la Lambda function
+data "archive_file" "commit_validator_zip" {
+  count    = var.validate_commit_messages ? 1 : 0
+  type     = "zip"
+  output_path = "${path.module}/commit_validator.zip"
+
+  source {
+    content = <<-PYTHON
+import json
+import re
+import boto3
+import os
+
+codecommit = boto3.client('codecommit')
+repository_name = os.environ['REPOSITORY_NAME']
+
+# Tipos de commit permitidos según Conventional Commits
+ALLOWED_TYPES = [
+    'feat',      # Una nueva característica para el usuario
+    'fix',       # Arregla un bug que afecta al usuario
+    'perf',      # Cambios que mejoran el rendimiento del sitio
+    'build',     # Cambios en el sistema de build, tareas de despliegue o instalación
+    'ci',        # Cambios en la integración continua
+    'docs',      # Cambios en la documentación
+    'refactor',  # Refactorización del código
+    'style',    # Cambios de formato, tabulaciones, espacios, etc.
+    'test'       # Añade tests o refactoriza uno existente
+]
+
+def validate_commit_message(message):
+    """
+    Valida que el mensaje de commit siga el formato Conventional Commits
+    Formato esperado: <tipo>: <descripción>
+    """
+    if not message or not message.strip():
+        return False, "El mensaje de commit no puede estar vacío"
+    
+    # Patrón para Conventional Commits: tipo: descripción
+    pattern = r'^({}):\s+.+'.format('|'.join(ALLOWED_TYPES))
+    
+    if not re.match(pattern, message.strip(), re.IGNORECASE):
+        allowed = ', '.join(ALLOWED_TYPES)
+        return False, f"El mensaje de commit debe seguir el formato Conventional Commits. Tipos permitidos: {allowed}. Ejemplo: 'feat: Agregar nueva funcionalidad'"
+    
+    return True, "Mensaje de commit válido"
+
+def handler(event, context):
+    """
+    Handler principal de la Lambda function
+    Se activa cuando se crea o actualiza un Pull Request en CodeCommit
+    """
+    try:
+        # Obtener información del evento de EventBridge
+        detail = event.get('detail', {})
+        event_type = detail.get('event')
+        
+        if event_type not in ['pullRequestCreated', 'pullRequestSourceBranchUpdated']:
+            return {
+                'statusCode': 200,
+                'body': json.dumps('Evento no relevante, omitiendo validación')
+            }
+        
+        # Obtener información del PR
+        pull_request_id = detail.get('pullRequestId')
+        source_commit = detail.get('sourceCommit')
+        destination_commit = detail.get('destinationCommit')
+        
+        if not pull_request_id:
+            return {
+                'statusCode': 400,
+                'body': json.dumps('No se pudo obtener el ID del Pull Request')
+            }
+        
+        # Obtener información del PR
+        try:
+            pr_response = codecommit.get_pull_request(
+                pullRequestId=pull_request_id
+            )
+            
+            pr = pr_response.get('pullRequest', {})
+            pull_request_targets = pr.get('pullRequestTargets', [])
+            
+            if not pull_request_targets:
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps('No se encontraron targets en el PR')
+                }
+            
+            target = pull_request_targets[0]
+            source_commit_id = target.get('sourceCommit')
+            destination_commit_id = target.get('destinationCommit')
+            
+            # Obtener los commits entre destination y source
+            if source_commit_id and destination_commit_id:
+                try:
+                    # Obtener commits usando get_commits con el rango
+                    commits_response = codecommit.get_commits(
+                        repositoryName=repository_name,
+                        commitId=source_commit_id
+                    )
+                    commits = commits_response.get('commits', [])
+                    
+                    # Filtrar commits que están después del destination commit
+                    filtered_commits = []
+                    for commit in commits:
+                        commit_id = commit.get('commitId', '')
+                        # Si llegamos al destination commit, paramos
+                        if commit_id == destination_commit_id:
+                            break
+                        filtered_commits.append(commit)
+                    
+                    commits = filtered_commits if filtered_commits else commits
+                        
+                except Exception as e:
+                    print(f"Error obteniendo commits: {str(e)}")
+                    return {
+                        'statusCode': 500,
+                        'body': json.dumps(f'Error obteniendo commits: {str(e)}')
+                    }
+            else:
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps('No se pudieron obtener los commits del PR')
+                }
+            
+        except Exception as e:
+            print(f"Error obteniendo PR: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps(f'Error obteniendo PR: {str(e)}')
+            }
+        
+        # Validar cada commit
+        invalid_commits = []
+        for commit in commits:
+            commit_id = commit.get('commitId', '')
+            commit_message = commit.get('message', '')
+            
+            is_valid, error_message = validate_commit_message(commit_message)
+            
+            if not is_valid:
+                invalid_commits.append({
+                    'commitId': commit_id[:7] if commit_id else 'unknown',
+                    'message': commit_message[:100] if commit_message else 'empty',
+                    'error': error_message
+                })
+        
+        # Si hay commits inválidos, comentar en el PR y actualizar estado
+        if invalid_commits:
+            error_details = "\n".join([
+                f"- Commit {c['commitId']}: {c['error']}\n  Mensaje: {c['message']}"
+                for c in invalid_commits
+            ])
+            
+            comment = f"""⚠️ **Validación de Commits Fallida**
+
+Los siguientes commits no cumplen con el formato Conventional Commits:
+
+{error_details}
+
+**Tipos de commit permitidos:**
+- feat: Una nueva característica para el usuario
+- fix: Arregla un bug que afecta al usuario
+- perf: Cambios que mejoran el rendimiento
+- build: Cambios en el sistema de build
+- ci: Cambios en la integración continua
+- docs: Cambios en la documentación
+- refactor: Refactorización del código
+- style: Cambios de formato
+- test: Añade o refactoriza tests
+
+**Formato esperado:** `<tipo>: <descripción>`
+
+Ejemplo: `feat: Agregar nueva funcionalidad de login`
+"""
+            
+            try:
+                # Obtener información del PR para los commits
+                pr_info = codecommit.get_pull_request(pullRequestId=pull_request_id)
+                pr_targets = pr_info.get('pullRequest', {}).get('pullRequestTargets', [])
+                
+                if pr_targets:
+                    target = pr_targets[0]
+                    dest_commit = target.get('destinationCommit')
+                    src_commit = target.get('sourceCommit')
+                    
+                    codecommit.post_comment_for_pull_request(
+                        pullRequestId=pull_request_id,
+                        repositoryName=repository_name,
+                        beforeCommitId=dest_commit,
+                        afterCommitId=src_commit,
+                        content=comment
+                    )
+            except Exception as e:
+                print(f"Error comentando en PR: {str(e)}")
+            
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'message': 'Commits inválidos encontrados',
+                    'invalid_commits': invalid_commits
+                })
+            }
+        
+        # Todos los commits son válidos
+        success_comment = "✅ **Validación de Commits Exitosa**\n\nTodos los commits cumplen con el formato Conventional Commits."
+        
+        try:
+            # Obtener información del PR para los commits
+            pr_info = codecommit.get_pull_request(pullRequestId=pull_request_id)
+            pr_targets = pr_info.get('pullRequest', {}).get('pullRequestTargets', [])
+            
+            if pr_targets:
+                target = pr_targets[0]
+                dest_commit = target.get('destinationCommit')
+                src_commit = target.get('sourceCommit')
+                
+                codecommit.post_comment_for_pull_request(
+                    pullRequestId=pull_request_id,
+                    repositoryName=repository_name,
+                    beforeCommitId=dest_commit,
+                    afterCommitId=src_commit,
+                    content=success_comment
+                )
+        except Exception as e:
+            print(f"Error comentando en PR: {str(e)}")
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Todos los commits son válidos')
+        }
+        
+    except Exception as e:
+        print(f"Error en handler: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f'Error procesando evento: {str(e)}')
+        }
+PYTHON
+    filename = "index.py"
+  }
+}
+
+# Permiso para que EventBridge invoque la Lambda
+resource "aws_lambda_permission" "eventbridge_invoke" {
+  count         = var.validate_commit_messages ? 1 : 0
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.commit_validator[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn     = aws_cloudwatch_event_rule.commit_validator[0].arn
+}
+
+# EventBridge Rule para validar commits en PRs
+resource "aws_cloudwatch_event_rule" "commit_validator" {
+  count       = var.validate_commit_messages ? 1 : 0
+  name        = "${var.project_name}-commit-validator-rule"
+  description = "Valida mensajes de commit cuando se crea o actualiza un PR"
+
+  event_pattern = jsonencode({
+    source      = ["aws.codecommit"]
+    detail-type = ["CodeCommit Pull Request State Change"]
+    detail = {
+      event = ["pullRequestCreated", "pullRequestSourceBranchUpdated"]
+      repositoryNames = [aws_codecommit_repository.main.repository_name]
+    }
+  })
+
+  tags = {
+    Name = "${var.project_name}-commit-validator-rule"
+  }
+}
+
+# EventBridge Target - Lambda function
+resource "aws_cloudwatch_event_target" "commit_validator" {
+  count = var.validate_commit_messages ? 1 : 0
+  rule  = aws_cloudwatch_event_rule.commit_validator[0].name
+  arn   = aws_lambda_function.commit_validator[0].arn
+}
+
 # IAM Role para CodeBuild
 resource "aws_iam_role" "codebuild" {
   name = "${var.project_name}-codebuild-role"

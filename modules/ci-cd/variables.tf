@@ -163,3 +163,9 @@ variable "prod_approvers_arn" {
   default     = null
 }
 
+variable "validate_commit_messages" {
+  description = "Validar que los mensajes de commit sigan el formato Conventional Commits"
+  type        = bool
+  default     = true
+}
+
